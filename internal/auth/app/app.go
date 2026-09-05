@@ -9,22 +9,25 @@ import (
 
 	"go-boilerplate/internal/auth/usecase"
 	"go-boilerplate/internal/golibs/kafka"
+	userv1 "go-boilerplate/pkg/genproto/user/v1"
 )
 
 type App struct {
 	authUsecase *usecase.AuthUsecase
+	grpcHandler *GRPCHandler
 }
 
 func NewApp(authUsecase *usecase.AuthUsecase) *App {
-	return &App{authUsecase: authUsecase}
+	return &App{
+		authUsecase: authUsecase,
+		grpcHandler: NewGRPCHandler(authUsecase),
+	}
 }
 
-// 1. Implement ServiceRegistrar cho gRPC
 func (a *App) RegisterGRPC(server *grpc.Server) {
-	// pb.RegisterAuthServiceServer(server, a.grpcHandler)
+	userv1.RegisterUserServiceServer(server, a.grpcHandler)
 }
 
-// 2. Implement HTTPServiceRegistrar cho Gin HTTP
 func (a *App) RegisterHTTP(router *gin.Engine) {
 	router.GET("/v1/auth/me", func(c *gin.Context) {
 		profile, err := a.authUsecase.GetProfile(c.Request.Context(), "user_123")
@@ -36,8 +39,6 @@ func (a *App) RegisterHTTP(router *gin.Engine) {
 	})
 }
 
-// 3. Implement KafkaConsumerRegistrar cho Kafka
 func (a *App) RegisterConsumers(ctx context.Context, km kafka.KafkaManagement) error {
-	// km.Consume(ctx, "user-created", "auth-group", a.kafkaHandler.HandleUserCreated)
 	return nil
 }
