@@ -1,0 +1,37 @@
+# Binaries & Compiled Outputs
+*.exe
+*.exe~
+*.dll
+*.so
+*.dylib
+*.test
+*.out
+/bin/
+/dist/
+/build/
+
+# Environment Configuration & Local Secrets
+.env
+.env.local
+.env.*.local
+*.pem
+*.key
+
+# IDEs & Editor Configuration
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
+.DS_Store
+Thumbs.db
+
+# Go Dependencies & Testing Artifacts
+vendor/
+coverage.out
+coverage.html
+
+# Logs & Temporary Files
+*.log
+/tmp/
+/scratch/

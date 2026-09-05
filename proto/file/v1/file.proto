@@ -1,0 +1,53 @@
+syntax = "proto3";
+
+package file.v1;
+
+option go_package = "go-boilerplate/pkg/genproto/file/v1;filev1";
+
+service FileService {
+  rpc UploadFile(UploadFileRequest) returns (UploadFileResponse);
+  rpc GetPresignedUrl(GetPresignedUrlRequest) returns (GetPresignedUrlResponse);
+  rpc GetUploadPresignedUrl(GetUploadPresignedUrlRequest) returns (GetUploadPresignedUrlResponse);
+  rpc DeleteFile(DeleteFileRequest) returns (DeleteFileResponse);
+}
+
+message UploadFileRequest {
+  string file_name = 1;
+  bytes content = 2;
+  string content_type = 3;
+  string folder = 4;
+}
+
+message UploadFileResponse {
+  string file_url = 1;
+  string file_key = 2;
+}
+
+message GetPresignedUrlRequest {
+  string file_key = 1;
+  int64 expires_in_seconds = 2;
+}
+
+message GetPresignedUrlResponse {
+  string presigned_url = 1;
+}
+
+message GetUploadPresignedUrlRequest {
+  string file_name = 1;
+  string content_type = 2;
+  string folder = 3;
+  int64 expires_in_seconds = 4;
+}
+
+message GetUploadPresignedUrlResponse {
+  string upload_url = 1;
+  string file_key = 2;
+}
+
+message DeleteFileRequest {
+  string file_key = 1;
+}
+
+message DeleteFileResponse {
+  bool success = 1;
+}
