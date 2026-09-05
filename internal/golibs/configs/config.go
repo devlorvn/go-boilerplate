@@ -19,9 +19,16 @@ type Config struct {
 	DB       database.DBConfig `mapstructure:"DB"`
 	Redis    redis.RedisConfig `mapstructure:"REDIS"`
 	Kafka    kafka.KafkaConfig `mapstructure:"KAFKA"`
+	HTTP     HTTPConfig        `mapstructure:"HTTP"`
 	Auth     AuthConfig        `mapstructure:"AUTH"`
 	Provider ProviderConfig    `mapstructure:"PROVIDER"`
 	Metrics  MetricsConfig     `mapstructure:"METRICS"`
+}
+
+type HTTPConfig struct {
+	Port        int    `mapstructure:"PORT"`          // e.g. 8000
+	AuthSvcAddr string `mapstructure:"AUTH_SVC_ADDR"` // e.g. "localhost:50051"
+	FileSvcAddr string `mapstructure:"FILE_SVC_ADDR"` // e.g. "localhost:50052"
 }
 
 type AppConfig struct {
@@ -73,6 +80,9 @@ func LoadConfig(configPath string) (*Config, error) {
 	v.SetDefault("APP.NAME", "authservice")
 	v.SetDefault("APP.ENV", "local")
 	v.SetDefault("LOG.LEVEL", "debug")
+	v.SetDefault("HTTP.PORT", 8000)
+	v.SetDefault("HTTP.AUTH_SVC_ADDR", "localhost:50051")
+	v.SetDefault("HTTP.FILE_SVC_ADDR", "localhost:50052")
 	v.SetDefault("GRPC.PORT", 50051)
 	v.SetDefault("GRPC.TIMEOUT", "10s")
 	v.SetDefault("DB.HOST", "localhost")

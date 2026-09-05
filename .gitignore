@@ -35,3 +35,6 @@ coverage.html
 *.log
 /tmp/
 /scratch/
+
+# AI 
+docs/superpowers/
