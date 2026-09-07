@@ -14,6 +14,9 @@ import (
 	"go-boilerplate/internal/golibs/database"
 	s3lib "go-boilerplate/internal/golibs/s3"
 
+	"github.com/aws/aws-sdk-go-v2/aws"
+	"github.com/aws/aws-sdk-go-v2/credentials"
+	"github.com/aws/aws-sdk-go-v2/service/s3"
 	"go.uber.org/zap"
 )
 
@@ -29,7 +32,24 @@ func main() {
 			log.Warn("Failed to initialize GORM File Repository", zap.Error(err))
 		}
 
-		s3Client := s3lib.NewS3Client(nil, "my-app-bucket")
+		s3Opts := s3.Options{
+			Region:       cfg.Provider.AWS.Region,
+			Credentials:  credentials.NewStaticCredentialsProvider(cfg.Provider.AWS.AccessKeyID, cfg.Provider.AWS.SecretAccessKey, ""),
+			UsePathStyle: true,
+		}
+
+		if cfg.Provider.AWS.Endpoint != "" {
+			s3Opts.BaseEndpoint = aws.String(cfg.Provider.AWS.Endpoint)
+		}
+
+		rawS3Client := s3.New(s3Opts)
+
+		bucket := cfg.Provider.AWS.Bucket
+		if bucket == "" {
+			bucket = "my-app-bucket"
+		}
+
+		s3Client := s3lib.NewS3Client(rawS3Client, bucket)
 		storageRepo := infras.NewS3StorageRepository(s3Client)
 
 		fileUsecase := usecase.NewFileUsecase(fileRepo, storageRepo)
@@ -40,8 +60,8 @@ func main() {
 		defer cleanupWorker.Stop()
 
 		grpcServer := bootstrap.NewServerBootstrap(bootstrap.GRPCServerConfig{
-			ServiceName:     "fileservice",
-			Port:            ":50052",
+			ServiceName:     cfg.App.Name,
+			Port:            fmt.Sprintf(":%d", cfg.GRPC.Port),
 			ShutdownTimeout: 5 * time.Second,
 		}, log)
 
@@ -49,9 +69,12 @@ func main() {
 			return fmt.Errorf("failed to start File Service gRPC server: %w", err)
 		}
 
+		bootstrap.StartMonitorServer(cfg.Metrics.Port, db, nil, log)
+
 		<-ctx.Done()
 		log.Info("Shutting down file service...")
 
 		return grpcServer.Stop(context.Background())
-	})
+	}, ".env.file")
 }
+

@@ -129,6 +129,39 @@ func (r *GORMFileRepository) GetExpiredPendingFiles(ctx context.Context, olderTh
 	return files, nil
 }
 
+func (r *GORMFileRepository) GetAll(ctx context.Context, limit, offset int, status string) ([]*domain.File, int64, error) {
+	if r.db == nil {
+		return nil, 0, nil
+	}
+	query := r.db.WithContext(ctx).Model(&filePO{})
+	if status != "" {
+		query = query.Where("status = ?", status)
+	}
+
+	var total int64
+	if err := query.Count(&total).Error; err != nil {
+		return nil, 0, err
+	}
+
+	if limit <= 0 {
+		limit = 10
+	}
+	if offset < 0 {
+		offset = 0
+	}
+
+	var pos []filePO
+	if err := query.Order("created_at DESC").Limit(limit).Offset(offset).Find(&pos).Error; err != nil {
+		return nil, 0, err
+	}
+
+	files := make([]*domain.File, len(pos))
+	for i, po := range pos {
+		files[i] = po.toDomain()
+	}
+	return files, total, nil
+}
+
 func (r *GORMFileRepository) Delete(ctx context.Context, fileKey string) error {
 	if r.db == nil {
 		return nil

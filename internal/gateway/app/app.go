@@ -44,28 +44,53 @@ func (a *GatewayApp) RegisterHTTP(router *gin.Engine) {
 	router.Use(middleware.CORS())
 	router.Use(middleware.RateLimit(a.Redis, 100, time.Minute))
 
-	v1 := router.Group("/v1")
-	{
-		auth := v1.Group("/auth")
+	registerRoutes := func(rg *gin.RouterGroup) {
+		auth := rg.Group("/auth")
 		{
 			auth.POST("/register", a.handleRegister)
 			auth.POST("/login", a.handleLogin)
 			auth.POST("/refresh-token", a.handleRefreshToken)
 		}
 
-		protectedAuth := v1.Group("/auth")
+		protectedAuth := rg.Group("/auth")
 		protectedAuth.Use(middleware.AuthMiddleware(a.UserClient))
 		{
 			protectedAuth.GET("/me", a.handleGetProfile)
 		}
 
-		files := v1.Group("/files")
+		files := rg.Group("/files")
 		files.Use(middleware.AuthMiddleware(a.UserClient))
 		{
+			files.GET("", a.handleGetAllFiles)
 			files.GET("/presigned-url", a.handleGetPresignedURL)
-			files.GET("/upload-presigned-url", a.handleGetUploadPresignedURL)
+			files.POST("/upload-presigned-url", a.handleGetUploadPresignedURL)
 		}
 	}
+
+	registerRoutes(router.Group("/v1"))
+	registerRoutes(router.Group("/api/v1"))
+
+	// Catch-all 404 handler for undefined routes
+	router.NoRoute(func(c *gin.Context) {
+		c.JSON(http.StatusNotFound, gin.H{
+			"code":      http.StatusNotFound,
+			"error":     "ROUTE_NOT_FOUND",
+			"message":   fmt.Sprintf("Route %s %s is not defined", c.Request.Method, c.Request.URL.Path),
+			"path":      c.Request.URL.Path,
+			"timestamp": time.Now().UTC().Format(time.RFC3339),
+		})
+	})
+
+	// Catch-all 405 handler for unsupported HTTP methods
+	router.NoMethod(func(c *gin.Context) {
+		c.JSON(http.StatusMethodNotAllowed, gin.H{
+			"code":      http.StatusMethodNotAllowed,
+			"error":     "METHOD_NOT_ALLOWED",
+			"message":   fmt.Sprintf("Method %s is not allowed for route %s", c.Request.Method, c.Request.URL.Path),
+			"path":      c.Request.URL.Path,
+			"timestamp": time.Now().UTC().Format(time.RFC3339),
+		})
+	})
 }
 
 func (a *GatewayApp) handleRegister(c *gin.Context) {
@@ -137,17 +162,49 @@ func (a *GatewayApp) handleGetPresignedURL(c *gin.Context) {
 	c.JSON(http.StatusOK, resp)
 }
 
+type GetUploadPresignedURLRequestDTO struct {
+	FileName         string `json:"file_name" binding:"required"`
+	ContentType      string `json:"content_type"`
+	Folder           string `json:"folder"`
+	ExpiresInSeconds int64  `json:"expires_in_seconds"`
+}
+
 func (a *GatewayApp) handleGetUploadPresignedURL(c *gin.Context) {
-	fileName := c.Query("file_name")
-	contentType := c.Query("content_type")
-	folder := c.DefaultQuery("folder", "uploads")
-	expiresIn, _ := strconv.ParseInt(c.DefaultQuery("expires_in_seconds", "3600"), 10, 64)
+	var dto GetUploadPresignedURLRequestDTO
+	if err := c.ShouldBindJSON(&dto); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+
+	if dto.Folder == "" {
+		dto.Folder = "uploads"
+	}
+	if dto.ExpiresInSeconds <= 0 {
+		dto.ExpiresInSeconds = 3600
+	}
 
 	resp, err := a.FileClient.GetUploadPresignedUrl(c.Request.Context(), &filev1.GetUploadPresignedUrlRequest{
-		FileName:         fileName,
-		ContentType:      contentType,
-		Folder:           folder,
-		ExpiresInSeconds: expiresIn,
+		FileName:         dto.FileName,
+		ContentType:      dto.ContentType,
+		Folder:           dto.Folder,
+		ExpiresInSeconds: dto.ExpiresInSeconds,
+	})
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		return
+	}
+	c.JSON(http.StatusOK, resp)
+}
+
+func (a *GatewayApp) handleGetAllFiles(c *gin.Context) {
+	limit, _ := strconv.Atoi(c.DefaultQuery("limit", "10"))
+	offset, _ := strconv.Atoi(c.DefaultQuery("offset", "0"))
+	status := c.Query("status")
+
+	resp, err := a.FileClient.GetAllFiles(c.Request.Context(), &filev1.GetAllFilesRequest{
+		Limit:  int32(limit),
+		Offset: int32(offset),
+		Status: status,
 	})
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})

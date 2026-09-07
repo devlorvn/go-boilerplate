@@ -23,6 +23,7 @@ const (
 	FileService_GetPresignedUrl_FullMethodName       = "/file.v1.FileService/GetPresignedUrl"
 	FileService_GetUploadPresignedUrl_FullMethodName = "/file.v1.FileService/GetUploadPresignedUrl"
 	FileService_DeleteFile_FullMethodName            = "/file.v1.FileService/DeleteFile"
+	FileService_GetAllFiles_FullMethodName           = "/file.v1.FileService/GetAllFiles"
 )
 
 // FileServiceClient is the client API for FileService service.
@@ -33,6 +34,7 @@ type FileServiceClient interface {
 	GetPresignedUrl(ctx context.Context, in *GetPresignedUrlRequest, opts ...grpc.CallOption) (*GetPresignedUrlResponse, error)
 	GetUploadPresignedUrl(ctx context.Context, in *GetUploadPresignedUrlRequest, opts ...grpc.CallOption) (*GetUploadPresignedUrlResponse, error)
 	DeleteFile(ctx context.Context, in *DeleteFileRequest, opts ...grpc.CallOption) (*DeleteFileResponse, error)
+	GetAllFiles(ctx context.Context, in *GetAllFilesRequest, opts ...grpc.CallOption) (*GetAllFilesResponse, error)
 }
 
 type fileServiceClient struct {
@@ -83,6 +85,16 @@ func (c *fileServiceClient) DeleteFile(ctx context.Context, in *DeleteFileReques
 	return out, nil
 }
 
+func (c *fileServiceClient) GetAllFiles(ctx context.Context, in *GetAllFilesRequest, opts ...grpc.CallOption) (*GetAllFilesResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(GetAllFilesResponse)
+	err := c.cc.Invoke(ctx, FileService_GetAllFiles_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
 // FileServiceServer is the server API for FileService service.
 // All implementations must embed UnimplementedFileServiceServer
 // for forward compatibility.
@@ -91,6 +103,7 @@ type FileServiceServer interface {
 	GetPresignedUrl(context.Context, *GetPresignedUrlRequest) (*GetPresignedUrlResponse, error)
 	GetUploadPresignedUrl(context.Context, *GetUploadPresignedUrlRequest) (*GetUploadPresignedUrlResponse, error)
 	DeleteFile(context.Context, *DeleteFileRequest) (*DeleteFileResponse, error)
+	GetAllFiles(context.Context, *GetAllFilesRequest) (*GetAllFilesResponse, error)
 	mustEmbedUnimplementedFileServiceServer()
 }
 
@@ -112,6 +125,9 @@ func (UnimplementedFileServiceServer) GetUploadPresignedUrl(context.Context, *Ge
 }
 func (UnimplementedFileServiceServer) DeleteFile(context.Context, *DeleteFileRequest) (*DeleteFileResponse, error) {
 	return nil, status.Error(codes.Unimplemented, "method DeleteFile not implemented")
+}
+func (UnimplementedFileServiceServer) GetAllFiles(context.Context, *GetAllFilesRequest) (*GetAllFilesResponse, error) {
+	return nil, status.Error(codes.Unimplemented, "method GetAllFiles not implemented")
 }
 func (UnimplementedFileServiceServer) mustEmbedUnimplementedFileServiceServer() {}
 func (UnimplementedFileServiceServer) testEmbeddedByValue()                     {}
@@ -206,6 +222,24 @@ func _FileService_DeleteFile_Handler(srv interface{}, ctx context.Context, dec f
 	return interceptor(ctx, in, info, handler)
 }
 
+func _FileService_GetAllFiles_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(GetAllFilesRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(FileServiceServer).GetAllFiles(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: FileService_GetAllFiles_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(FileServiceServer).GetAllFiles(ctx, req.(*GetAllFilesRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
 // FileService_ServiceDesc is the grpc.ServiceDesc for FileService service.
 // It's only intended for direct use with grpc.RegisterService,
 // and not to be introspected or modified (even as a copy)
@@ -228,6 +262,10 @@ var FileService_ServiceDesc = grpc.ServiceDesc{
 		{
 			MethodName: "DeleteFile",
 			Handler:    _FileService_DeleteFile_Handler,
+		},
+		{
+			MethodName: "GetAllFiles",
+			Handler:    _FileService_GetAllFiles_Handler,
 		},
 	},
 	Streams:  []grpc.StreamDesc{},

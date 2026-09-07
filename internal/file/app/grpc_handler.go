@@ -2,6 +2,7 @@ package app
 
 import (
 	"context"
+	"time"
 
 	"go-boilerplate/internal/file/usecase"
 	filev1 "go-boilerplate/pkg/genproto/file/v1"
@@ -57,5 +58,32 @@ func (h *GRPCHandler) DeleteFile(ctx context.Context, req *filev1.DeleteFileRequ
 	}
 	return &filev1.DeleteFileResponse{
 		Success: true,
+	}, nil
+}
+
+func (h *GRPCHandler) GetAllFiles(ctx context.Context, req *filev1.GetAllFilesRequest) (*filev1.GetAllFilesResponse, error) {
+	files, total, err := h.usecase.GetAllFiles(ctx, int(req.Limit), int(req.Offset), req.Status)
+	if err != nil {
+		return nil, status.Error(codes.Internal, err.Error())
+	}
+
+	records := make([]*filev1.FileRecord, len(files))
+	for i, f := range files {
+		records[i] = &filev1.FileRecord{
+			Id:          f.ID,
+			FileKey:     f.FileKey,
+			FileName:    f.FileName,
+			FileSize:    f.FileSize,
+			ContentType: f.ContentType,
+			Status:      string(f.Status),
+			Url:         f.URL,
+			CreatedAt:   f.CreatedAt.Format(time.RFC3339),
+			UpdatedAt:   f.UpdatedAt.Format(time.RFC3339),
+		}
+	}
+
+	return &filev1.GetAllFilesResponse{
+		Files: records,
+		Total: total,
 	}, nil
 }

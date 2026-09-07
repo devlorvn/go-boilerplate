@@ -36,6 +36,7 @@ type FileRepository interface {
 	UpdateStatus(ctx context.Context, fileKey string, status FileStatus, url string) error
 	GetByFileKey(ctx context.Context, fileKey string) (*File, error)
 	GetExpiredPendingFiles(ctx context.Context, olderThan time.Duration) ([]*File, error)
+	GetAll(ctx context.Context, limit, offset int, status string) ([]*File, int64, error)
 	Delete(ctx context.Context, fileKey string) error
 }
 

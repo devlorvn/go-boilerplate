@@ -5,13 +5,14 @@ import (
 	"go-boilerplate/internal/golibs/database"
 	"go-boilerplate/internal/golibs/kafka"
 	"go-boilerplate/internal/golibs/redis"
+	"os"
+	"path/filepath"
 	"strings"
 	"time"
 
 	"github.com/spf13/viper"
 )
 
-// Config chứa toàn bộ cấu hình hệ thống, được nhóm theo từng công nghệ (Sub-structs)
 type Config struct {
 	App      AppConfig         `mapstructure:"APP"`
 	Log      LogConfig         `mapstructure:"LOG"`
@@ -32,7 +33,7 @@ type HTTPConfig struct {
 }
 
 type AppConfig struct {
-	Name string `mapstructure:"NAME"` // e.g. "bus-notification-service"
+	Name string `mapstructure:"NAME"` // e.g. "authservice"
 	Env  string `mapstructure:"ENV"`  // local | staging | prod
 }
 
@@ -62,6 +63,8 @@ type AWSConfig struct {
 	Region          string `mapstructure:"REGION"`
 	AccessKeyID     string `mapstructure:"ACCESS_KEY_ID"`
 	SecretAccessKey string `mapstructure:"SECRET_ACCESS_KEY"`
+	Endpoint        string `mapstructure:"ENDPOINT"`
+	Bucket          string `mapstructure:"BUCKET"`
 	SESFromEmail    string `mapstructure:"SES_FROM_EMAIL"`
 }
 
@@ -70,10 +73,16 @@ type MetricsConfig struct {
 	Port    int  `mapstructure:"PORT"` // e.g. 2112
 }
 
-func LoadConfig(configPath string) (*Config, error) {
+func LoadConfig(configPath string, configName ...string) (*Config, error) {
 	v := viper.New()
-	v.AddConfigPath(configPath)
-	v.SetConfigName(".env")
+
+	cName := ".env"
+	if len(configName) > 0 && configName[0] != "" {
+		cName = configName[0]
+	}
+
+	configFile := filepath.Join(configPath, cName)
+	v.SetConfigFile(configFile)
 	v.SetConfigType("env")
 
 	// Set Fallback Defaults
@@ -95,15 +104,16 @@ func LoadConfig(configPath string) (*Config, error) {
 	v.SetDefault("REDIS.PORT", "6379")
 	v.SetDefault("METRICS.PORT", 2112)
 
-	// Hỗ trợ map môi trường dạng POSTGRES_HOST -> POSTGRES.HOST
 	v.SetEnvKeyReplacer(strings.NewReplacer(".", "_"))
 	v.AutomaticEnv()
 
 	if err := v.ReadInConfig(); err != nil {
-		if _, ok := err.(viper.ConfigFileNotFoundError); !ok {
+		if _, ok := err.(viper.ConfigFileNotFoundError); !ok && !os.IsNotExist(err) {
 			return nil, fmt.Errorf("read config file failed: %w", err)
 		}
 	}
+
+	remapFlatKeys(v)
 
 	var cfg Config
 	if err := v.Unmarshal(&cfg); err != nil {
@@ -112,3 +122,36 @@ func LoadConfig(configPath string) (*Config, error) {
 
 	return &cfg, nil
 }
+
+func remapFlatKeys(v *viper.Viper) {
+	prefixes := []struct {
+		prefix string
+		target string
+	}{
+		{"provider_aws_", "PROVIDER.AWS."},
+		{"provider_fcm_", "PROVIDER.FCM."},
+		{"http_", "HTTP."},
+		{"grpc_", "GRPC."},
+		{"app_", "APP."},
+		{"log_", "LOG."},
+		{"db_", "DB."},
+		{"redis_", "REDIS."},
+		{"kafka_", "KAFKA."},
+		{"auth_", "AUTH."},
+		{"metrics_", "METRICS."},
+	}
+
+	for _, key := range v.AllKeys() {
+		val := v.Get(key)
+		lowerKey := strings.ToLower(key)
+		for _, p := range prefixes {
+			if strings.HasPrefix(lowerKey, p.prefix) {
+				suffix := strings.ToUpper(strings.TrimPrefix(lowerKey, p.prefix))
+				dotKey := p.target + suffix
+				v.Set(dotKey, val)
+				break
+			}
+		}
+	}
+}
+

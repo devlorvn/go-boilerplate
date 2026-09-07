@@ -109,3 +109,7 @@ func (u *FileUsecase) CleanupExpiredPendingFiles(ctx context.Context, olderThan 
 	}
 	return cleanedCount, nil
 }
+
+func (u *FileUsecase) GetAllFiles(ctx context.Context, limit, offset int, status string) ([]*domain.File, int64, error) {
+	return u.fileRepo.GetAll(ctx, limit, offset, status)
+}

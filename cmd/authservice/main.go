@@ -69,5 +69,5 @@ func main() {
 		log.Info("Shutting down auth service...")
 
 		return grpcServer.Stop(context.Background())
-	})
+	}, ".env.auth")
 }

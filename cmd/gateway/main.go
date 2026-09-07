@@ -9,6 +9,8 @@ import (
 	"go-boilerplate/internal/golibs/bootstrap"
 	"go-boilerplate/internal/golibs/configs"
 	"go-boilerplate/internal/golibs/redis"
+
+	_redis "github.com/redis/go-redis/v9"
 	filev1 "go-boilerplate/pkg/genproto/file/v1"
 	userv1 "go-boilerplate/pkg/genproto/user/v1"
 
@@ -41,7 +43,7 @@ func main() {
 		gatewayApp := app.NewGatewayApp(cfg, log, rClient, userClient, fileClient)
 
 		httpCfg := bootstrap.HTTPServerConfig{
-			ServiceName:     "api-gateway",
+			ServiceName:     cfg.App.Name,
 			Port:            fmt.Sprintf(":%d", cfg.HTTP.Port),
 			IsDebug:         cfg.App.Env == "local",
 			ShutdownTimeout: 5 * time.Second,
@@ -52,7 +54,13 @@ func main() {
 			return fmt.Errorf("failed to start HTTP gateway: %w", err)
 		}
 
+		var redisClient *_redis.Client
+		if rClient != nil {
+			redisClient = rClient.Client
+		}
+		bootstrap.StartMonitorServer(cfg.Metrics.Port, nil, redisClient, log)
+
 		<-ctx.Done()
 		return httpServer.Stop(context.Background())
-	})
+	}, ".env.gateway")
 }

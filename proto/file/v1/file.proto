@@ -9,6 +9,7 @@ service FileService {
   rpc GetPresignedUrl(GetPresignedUrlRequest) returns (GetPresignedUrlResponse);
   rpc GetUploadPresignedUrl(GetUploadPresignedUrlRequest) returns (GetUploadPresignedUrlResponse);
   rpc DeleteFile(DeleteFileRequest) returns (DeleteFileResponse);
+  rpc GetAllFiles(GetAllFilesRequest) returns (GetAllFilesResponse);
 }
 
 message UploadFileRequest {
@@ -51,3 +52,27 @@ message DeleteFileRequest {
 message DeleteFileResponse {
   bool success = 1;
 }
+
+message FileRecord {
+  string id = 1;
+  string file_key = 2;
+  string file_name = 3;
+  int64 file_size = 4;
+  string content_type = 5;
+  string status = 6;
+  string url = 7;
+  string created_at = 8;
+  string updated_at = 9;
+}
+
+message GetAllFilesRequest {
+  int32 limit = 1;
+  int32 offset = 2;
+  string status = 3;
+}
+
+message GetAllFilesResponse {
+  repeated FileRecord files = 1;
+  int64 total = 2;
+}
+
