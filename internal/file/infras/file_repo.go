@@ -3,7 +3,6 @@ package infras
 import (
 	"context"
 	"errors"
-	"fmt"
 	"time"
 
 	"go-boilerplate/internal/file/domain"
@@ -66,10 +65,9 @@ type GORMFileRepository struct {
 }
 
 func NewGORMFileRepository(db *gorm.DB) (*GORMFileRepository, error) {
-	if db != nil {
-		if err := db.AutoMigrate(&filePO{}); err != nil {
-			return nil, fmt.Errorf("failed to automigrate files table: %w", err)
-		}
+	// Schema is owned by migrations/ (golang-migrate); never AutoMigrate here.
+	if db == nil {
+		return nil, errors.New("nil *gorm.DB")
 	}
 	return &GORMFileRepository{db: db}, nil
 }

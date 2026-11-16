@@ -2,15 +2,21 @@ package auth
 
 import (
 	"context"
-	"net/http"
 
-	"github.com/gin-gonic/gin"
 	"google.golang.org/grpc"
 
 	"go-boilerplate/internal/auth/usecase"
 	"go-boilerplate/internal/golibs/kafka"
 	userv1 "go-boilerplate/pkg/genproto/user/v1"
 )
+
+// PublicMethods can be called without an access token.
+var PublicMethods = []string{
+	userv1.UserService_Register_FullMethodName,
+	userv1.UserService_Login_FullMethodName,
+	userv1.UserService_RefreshToken_FullMethodName,
+	userv1.UserService_ValidateToken_FullMethodName,
+}
 
 type App struct {
 	authUsecase *usecase.AuthUsecase
@@ -26,17 +32,6 @@ func NewApp(authUsecase *usecase.AuthUsecase) *App {
 
 func (a *App) RegisterGRPC(server *grpc.Server) {
 	userv1.RegisterUserServiceServer(server, a.grpcHandler)
-}
-
-func (a *App) RegisterHTTP(router *gin.Engine) {
-	router.GET("/v1/auth/me", func(c *gin.Context) {
-		profile, err := a.authUsecase.GetProfile(c.Request.Context(), "user_123")
-		if err != nil {
-			c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
-			return
-		}
-		c.JSON(http.StatusOK, profile)
-	})
 }
 
 func (a *App) RegisterConsumers(ctx context.Context, km kafka.KafkaManagement) error {

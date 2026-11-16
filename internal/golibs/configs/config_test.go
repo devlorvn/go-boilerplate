@@ -1,17 +1,9 @@
 package configs
 
-import (
-	"path/filepath"
-	"testing"
-)
+import "testing"
 
 func TestLoadConfig_FileService(t *testing.T) {
-	rootDir, err := filepath.Abs("../../../")
-	if err != nil {
-		t.Fatalf("failed to get root dir: %v", err)
-	}
-
-	cfg, err := LoadConfig(rootDir, ".env.file")
+	cfg, err := LoadConfig("testdata", "file.env")
 	if err != nil {
 		t.Fatalf("LoadConfig failed: %v", err)
 	}
@@ -38,12 +30,7 @@ func TestLoadConfig_FileService(t *testing.T) {
 }
 
 func TestLoadConfig_AuthService(t *testing.T) {
-	rootDir, err := filepath.Abs("../../../")
-	if err != nil {
-		t.Fatalf("failed to get root dir: %v", err)
-	}
-
-	cfg, err := LoadConfig(rootDir, ".env.auth")
+	cfg, err := LoadConfig("testdata", "auth.env")
 	if err != nil {
 		t.Fatalf("LoadConfig failed: %v", err)
 	}
@@ -66,12 +53,7 @@ func TestLoadConfig_AuthService(t *testing.T) {
 }
 
 func TestLoadConfig_GatewayService(t *testing.T) {
-	rootDir, err := filepath.Abs("../../../")
-	if err != nil {
-		t.Fatalf("failed to get root dir: %v", err)
-	}
-
-	cfg, err := LoadConfig(rootDir, ".env.gateway")
+	cfg, err := LoadConfig("testdata", "gateway.env")
 	if err != nil {
 		t.Fatalf("LoadConfig failed: %v", err)
 	}

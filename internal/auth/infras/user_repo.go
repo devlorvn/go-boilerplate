@@ -3,7 +3,6 @@ package infras
 import (
 	"context"
 	"errors"
-	"fmt"
 	"time"
 
 	"go-boilerplate/internal/auth/domain"
@@ -60,10 +59,9 @@ type GORMUserRepository struct {
 }
 
 func NewGORMUserRepository(db *gorm.DB) (*GORMUserRepository, error) {
-	if db != nil {
-		if err := db.AutoMigrate(&userPO{}); err != nil {
-			return nil, fmt.Errorf("failed to automigrate User table: %w", err)
-		}
+	// Schema is owned by migrations/ (golang-migrate); never AutoMigrate here.
+	if db == nil {
+		return nil, errors.New("nil *gorm.DB")
 	}
 	return &GORMUserRepository{db: db}, nil
 }

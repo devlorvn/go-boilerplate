@@ -2,7 +2,11 @@ ENV?=local
 GENPROTO_OUT=/pkg/genproto
 TEST_FILE=.
 
-.PHONY: run-gateway run-auth run-file run-all gen-proto migrate-up migrate-down migrate-auth-up migrate-auth-down migrate-file-up migrate-file-down dev-up dev-down build-all test
+.PHONY: env run-gateway run-auth run-file run-all gen-proto migrate-up migrate-down migrate-auth-up migrate-auth-down migrate-file-up migrate-file-down dev-up dev-down build-all test
+
+# Create local env files from the committed templates (does not overwrite)
+env:
+	@for s in auth file gateway; do [ -f .env.$$s ] || cp .env.$$s.example .env.$$s; done
 
 # Individual Service Runners
 run-gateway:
@@ -49,9 +53,9 @@ dev-down:
 
 # Build All Binaries
 build-all:
-	go build -o bin/gateway.exe ./cmd/gateway
-	go build -o bin/authservice.exe ./cmd/authservice
-	go build -o bin/fileservice.exe ./cmd/fileservice
+	go build -o bin/gateway ./cmd/gateway
+	go build -o bin/authservice ./cmd/authservice
+	go build -o bin/fileservice ./cmd/fileservice
 
 # Run Tests
 test:

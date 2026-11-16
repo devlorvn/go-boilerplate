@@ -2,6 +2,7 @@ package bootstrap
 
 import (
 	"context"
+	"errors"
 	"os"
 	"os/signal"
 	"syscall"
@@ -35,8 +36,10 @@ func Run(runner func(ctx context.Context, cfg *configs.Config, log *zap.Logger) 
 
 	log.Info("Starting Application...", zap.String("app_name", cfg.App.Name), zap.String("env", cfg.App.Env))
 
-	if err := runner(ctx, cfg, log); err != nil && err != context.Canceled {
+	if err := runner(ctx, cfg, log); err != nil && !errors.Is(err, context.Canceled) {
 		log.Error("Application crashed", zap.Error(err))
+		_ = log.Sync()
+		os.Exit(1)
 	}
 
 	log.Info("Application gracefully stopped")

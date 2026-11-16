@@ -39,3 +39,5 @@ coverage.html
 
 # AI 
 docs/superpowers/
+# Per-service env templates are committed
+!.env.*.example

@@ -3,9 +3,12 @@ package auth
 import (
 	"context"
 	"errors"
+	"strings"
 
 	"go-boilerplate/internal/auth/domain"
 	"go-boilerplate/internal/auth/usecase"
+	"go-boilerplate/internal/golibs/constants"
+	"go-boilerplate/internal/golibs/interceptors"
 	userv1 "go-boilerplate/pkg/genproto/user/v1"
 
 	"google.golang.org/grpc/codes"
@@ -78,8 +81,23 @@ func (h *GRPCHandler) ValidateToken(ctx context.Context, req *userv1.ValidateTok
 	}, nil
 }
 
+// GetProfile returns the caller's own profile. Reading another user's profile
+// (req.UserId set to someone else) is only allowed for admins.
 func (h *GRPCHandler) GetProfile(ctx context.Context, req *userv1.GetProfileRequest) (*userv1.GetProfileResponse, error) {
-	user, err := h.usecase.GetProfile(ctx, req.UserId)
+	callerID, ok := interceptors.UserIDFromContext(ctx)
+	if !ok {
+		return nil, status.Error(codes.Unauthenticated, "missing user in context")
+	}
+	targetID := callerID
+	if req.UserId != "" && req.UserId != callerID {
+		role, _ := interceptors.UserRoleFromContext(ctx)
+		if !strings.EqualFold(role, constants.RoleAdmin) {
+			return nil, status.Error(codes.PermissionDenied, "cannot read another user's profile")
+		}
+		targetID = req.UserId
+	}
+
+	user, err := h.usecase.GetProfile(ctx, targetID)
 	if err != nil {
 		if errors.Is(err, domain.ErrUserNotFound) {
 			return nil, status.Error(codes.NotFound, err.Error())

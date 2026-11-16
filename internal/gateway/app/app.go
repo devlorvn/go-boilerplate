@@ -1,6 +1,7 @@
 package app
 
 import (
+	"context"
 	"fmt"
 	"net/http"
 	"strconv"
@@ -14,6 +15,7 @@ import (
 
 	"github.com/gin-gonic/gin"
 	"go.uber.org/zap"
+	"google.golang.org/grpc/metadata"
 )
 
 type GatewayApp struct {
@@ -93,6 +95,12 @@ func (a *GatewayApp) RegisterHTTP(router *gin.Engine) {
 	})
 }
 
+// authContext forwards the caller's Authorization header to downstream gRPC
+// services, which verify the token themselves (zero-trust between services).
+func authContext(c *gin.Context) context.Context {
+	return metadata.AppendToOutgoingContext(c.Request.Context(), "authorization", c.GetHeader("Authorization"))
+}
+
 func (a *GatewayApp) handleRegister(c *gin.Context) {
 	var req userv1.RegisterRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
@@ -137,7 +145,7 @@ func (a *GatewayApp) handleRefreshToken(c *gin.Context) {
 
 func (a *GatewayApp) handleGetProfile(c *gin.Context) {
 	userID, _ := c.Get("user_id")
-	resp, err := a.UserClient.GetProfile(c.Request.Context(), &userv1.GetProfileRequest{
+	resp, err := a.UserClient.GetProfile(authContext(c), &userv1.GetProfileRequest{
 		UserId: fmt.Sprintf("%v", userID),
 	})
 	if err != nil {
@@ -151,7 +159,7 @@ func (a *GatewayApp) handleGetPresignedURL(c *gin.Context) {
 	fileKey := c.Query("file_key")
 	expiresIn, _ := strconv.ParseInt(c.DefaultQuery("expires_in_seconds", "3600"), 10, 64)
 
-	resp, err := a.FileClient.GetPresignedUrl(c.Request.Context(), &filev1.GetPresignedUrlRequest{
+	resp, err := a.FileClient.GetPresignedUrl(authContext(c), &filev1.GetPresignedUrlRequest{
 		FileKey:          fileKey,
 		ExpiresInSeconds: expiresIn,
 	})
@@ -183,7 +191,7 @@ func (a *GatewayApp) handleGetUploadPresignedURL(c *gin.Context) {
 		dto.ExpiresInSeconds = 3600
 	}
 
-	resp, err := a.FileClient.GetUploadPresignedUrl(c.Request.Context(), &filev1.GetUploadPresignedUrlRequest{
+	resp, err := a.FileClient.GetUploadPresignedUrl(authContext(c), &filev1.GetUploadPresignedUrlRequest{
 		FileName:         dto.FileName,
 		ContentType:      dto.ContentType,
 		Folder:           dto.Folder,
@@ -201,7 +209,7 @@ func (a *GatewayApp) handleGetAllFiles(c *gin.Context) {
 	offset, _ := strconv.Atoi(c.DefaultQuery("offset", "0"))
 	status := c.Query("status")
 
-	resp, err := a.FileClient.GetAllFiles(c.Request.Context(), &filev1.GetAllFilesRequest{
+	resp, err := a.FileClient.GetAllFiles(authContext(c), &filev1.GetAllFilesRequest{
 		Limit:  int32(limit),
 		Offset: int32(offset),
 		Status: status,

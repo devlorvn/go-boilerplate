@@ -10,7 +10,6 @@ import (
 	"go-boilerplate/internal/golibs/configs"
 	"go-boilerplate/internal/golibs/redis"
 
-	_redis "github.com/redis/go-redis/v9"
 	filev1 "go-boilerplate/pkg/genproto/file/v1"
 	userv1 "go-boilerplate/pkg/genproto/user/v1"
 
@@ -23,8 +22,9 @@ func main() {
 	bootstrap.Run(func(ctx context.Context, cfg *configs.Config, log *zap.Logger) error {
 		rClient, err := redis.NewRedisClient(ctx, cfg.Redis, log)
 		if err != nil {
-			log.Warn("Failed to initialize Redis client for Gateway rate limiter", zap.Error(err))
+			return fmt.Errorf("connect redis (rate limiter): %w", err)
 		}
+		defer rClient.Close()
 
 		userConn, err := grpc.NewClient(cfg.HTTP.AuthSvcAddr, grpc.WithTransportCredentials(insecure.NewCredentials()))
 		if err != nil {
@@ -54,11 +54,7 @@ func main() {
 			return fmt.Errorf("failed to start HTTP gateway: %w", err)
 		}
 
-		var redisClient *_redis.Client
-		if rClient != nil {
-			redisClient = rClient.Client
-		}
-		bootstrap.StartMonitorServer(cfg.Metrics.Port, nil, redisClient, log)
+		bootstrap.StartMonitorServer(cfg.Metrics.Port, nil, rClient.Client, log)
 
 		<-ctx.Done()
 		return httpServer.Stop(context.Background())

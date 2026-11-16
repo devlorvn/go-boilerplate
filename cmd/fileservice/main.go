@@ -12,24 +12,32 @@ import (
 	"go-boilerplate/internal/golibs/bootstrap"
 	"go-boilerplate/internal/golibs/configs"
 	"go-boilerplate/internal/golibs/database"
+	"go-boilerplate/internal/golibs/interceptors"
+	"go-boilerplate/internal/golibs/jwtutil"
 	s3lib "go-boilerplate/internal/golibs/s3"
 
 	"github.com/aws/aws-sdk-go-v2/aws"
 	"github.com/aws/aws-sdk-go-v2/credentials"
 	"github.com/aws/aws-sdk-go-v2/service/s3"
 	"go.uber.org/zap"
+	"google.golang.org/grpc"
 )
 
 func main() {
 	bootstrap.Run(func(ctx context.Context, cfg *configs.Config, log *zap.Logger) error {
+		verifier, err := jwtutil.NewHS256(cfg.Auth.JWTSecret)
+		if err != nil {
+			return fmt.Errorf("AUTH_JWT_SECRET: %w", err)
+		}
+
 		db, err := database.NewGORM(cfg.DB, cfg.App.Env == "local")
 		if err != nil {
-			log.Warn("Database connection failed for file service", zap.Error(err))
+			return fmt.Errorf("connect database: %w", err)
 		}
 
 		fileRepo, err := infras.NewGORMFileRepository(db)
 		if err != nil {
-			log.Warn("Failed to initialize GORM File Repository", zap.Error(err))
+			return fmt.Errorf("init file repository: %w", err)
 		}
 
 		s3Opts := s3.Options{
@@ -63,7 +71,11 @@ func main() {
 			ServiceName:     cfg.App.Name,
 			Port:            fmt.Sprintf(":%d", cfg.GRPC.Port),
 			ShutdownTimeout: 5 * time.Second,
-		}, log)
+		}, log, grpc.ChainUnaryInterceptor(
+			interceptors.RecoveryInterceptor(log),
+			interceptors.LoggingInterceptor(log),
+			interceptors.AuthInterceptor(verifier),
+		))
 
 		if err := grpcServer.Start(app); err != nil {
 			return fmt.Errorf("failed to start File Service gRPC server: %w", err)
@@ -77,4 +89,3 @@ func main() {
 		return grpcServer.Stop(context.Background())
 	}, ".env.file")
 }
-
