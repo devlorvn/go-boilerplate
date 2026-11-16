@@ -11,6 +11,7 @@ import (
 	"go-boilerplate/internal/auth/application/queries"
 	"go-boilerplate/internal/auth/domain"
 	"go-boilerplate/internal/golibs/authz"
+	"go-boilerplate/internal/golibs/errorx"
 	"go-boilerplate/internal/golibs/interceptors"
 	userv1 "go-boilerplate/pkg/genproto/user/v1"
 
@@ -62,8 +63,11 @@ func (h *Handler) RefreshToken(ctx context.Context, req *userv1.RefreshTokenRequ
 // a normal answer for this RPC.
 func (h *Handler) ValidateToken(ctx context.Context, req *userv1.ValidateTokenRequest) (*userv1.ValidateTokenResponse, error) {
 	actor, err := h.Queries.ValidateToken(ctx, req.AccessToken)
-	if err != nil {
+	if errorx.KindOf(err) == errorx.Unauthenticated {
 		return &userv1.ValidateTokenResponse{Valid: false}, nil
+	}
+	if err != nil {
+		return nil, err
 	}
 	return &userv1.ValidateTokenResponse{Valid: true, UserId: actor.UserID, Role: actor.Role}, nil
 }

@@ -18,6 +18,9 @@ type Common struct {
 	HTTPPort        int           `mapstructure:"http_port"`
 	MetricsPort     int           `mapstructure:"metrics_port"`
 	ShutdownTimeout time.Duration `mapstructure:"shutdown_timeout"`
+	// DrainDelay is how long /readyz reports DRAINING before servers stop, so
+	// load balancers deregister the instance first. 0 locally, ~5-15s on AWS.
+	DrainDelay time.Duration `mapstructure:"drain_delay"`
 }
 
 func (c Common) IsLocal() bool { return c.Env == "local" || c.Env == "dev" }

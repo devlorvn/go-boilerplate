@@ -8,7 +8,7 @@ postgres:
 storage:
   region: ap-southeast-1
   bucket: my-app-bucket
-  endpoint: ""            # MinIO/LocalStack URL locally, empty for real S3
+  endpoint: ""            # S3-compatible URL locally (see secrets/example.yaml), empty for real S3
   access_key_id: ""       # secret
   secret_access_key: ""   # secret
 

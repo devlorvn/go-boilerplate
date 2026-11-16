@@ -1,8 +1,17 @@
 DB_SERVICES := auth file
 CONFIG_DIR  ?= configs
 SERVER      := go run ./cmd/server
+IMAGE       ?= go-boilerplate:local
+VERSION     ?= $(shell git describe --tags --always --dirty 2>/dev/null || echo dev)
 
-.PHONY: secrets run-all migrate-up build test gen-proto dev-up dev-down
+# Tool versions, kept in sync with .github/workflows/ci.yml
+GOLANGCI_LINT_VERSION      := v2.15.0
+BUF_VERSION                := v1.75.0
+PROTOC_GEN_GO_VERSION      := v1.36.11
+PROTOC_GEN_GO_GRPC_VERSION := v1.6.2
+
+.PHONY: secrets run-all migrate-up build test cover lint fmt gen-proto lint-proto breaking \
+	docker-build up-app down-app dev-up dev-down tools
 
 # Create gitignored configs/secrets/{auth,file}.yaml sharing one random JWT secret (never overwrites)
 secrets:
@@ -27,13 +36,46 @@ migrate-down-%:
 	$(SERVER) migrate $* down --steps $(or $(STEPS),1) --config-dir $(CONFIG_DIR)
 
 build:
-	CGO_ENABLED=0 go build -o bin/server ./cmd/server
+	CGO_ENABLED=0 go build -trimpath -ldflags="-s -w -X main.version=$(VERSION)" -o bin/server ./cmd/server
 
 test:
-	go test ./...
+	go test -race ./...
+
+cover:
+	go test -race -coverprofile=coverage.out ./... && go tool cover -func=coverage.out | tail -1
+
+lint:
+	golangci-lint run ./...
+
+fmt:
+	golangci-lint fmt ./...
 
 gen-proto:
-	go run scripts/gen_proto/main.go
+	buf generate
+
+lint-proto:
+	buf lint
+
+# Fails if proto changes break clients compared with origin/main
+breaking:
+	buf breaking --against '.git#branch=origin/main,subdir=proto'
+
+# Install the dev tools above into $(go env GOPATH)/bin
+tools:
+	go install github.com/golangci/golangci-lint/v2/cmd/golangci-lint@$(GOLANGCI_LINT_VERSION)
+	go install github.com/bufbuild/buf/cmd/buf@$(BUF_VERSION)
+	go install google.golang.org/protobuf/cmd/protoc-gen-go@$(PROTOC_GEN_GO_VERSION)
+	go install google.golang.org/grpc/cmd/protoc-gen-go-grpc@$(PROTOC_GEN_GO_GRPC_VERSION)
+
+docker-build:
+	docker build --build-arg VERSION=$(VERSION) -t $(IMAGE) .
+
+# Whole stack in Docker: infra + migrations + auth, file, gateway
+up-app:
+	JWT_SECRET=$${JWT_SECRET:-$$(openssl rand -hex 32)} docker compose --profile app up -d --build --wait
+
+down-app:
+	docker compose --profile app down
 
 dev-up:
 	docker compose up -d

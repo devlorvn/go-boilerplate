@@ -11,7 +11,7 @@ import (
 
 // Servicer is the only interface a service must implement. The bootstrap then
 // checks for the optional interfaces below and starts whatever matches: a gRPC
-// server, an HTTP server, background workers. The monitor server (/healthz,
+// server, an HTTP server, background workers. The monitor server (/livez, /readyz,
 // /metrics) always runs.
 type Servicer[T configs.Provider] interface {
 	// InitDependencies builds repositories, usecases and handlers. Returning an

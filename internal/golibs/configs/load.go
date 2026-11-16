@@ -44,7 +44,7 @@ func Load[T any](name, dir string) (*T, error) {
 			return nil, fmt.Errorf("open config %s: %w", l.path, err)
 		}
 		err = v.MergeConfig(f)
-		f.Close()
+		_ = f.Close() // read-only file, nothing to flush
 		if err != nil {
 			return nil, fmt.Errorf("parse config %s: %w", l.path, err)
 		}

@@ -67,7 +67,7 @@ func DoBackOff(fn retryableFn, dur time.Duration) error {
 		}
 		attempt++
 		if attempt > maxRetries {
-			return fmt.Errorf("%s %s", ErrMaxRetriesReached, err)
+			return fmt.Errorf("%w: %w", ErrMaxRetriesReached, err)
 		}
 		time.Sleep(dur)
 	}

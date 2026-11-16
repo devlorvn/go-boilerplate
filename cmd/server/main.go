@@ -2,6 +2,7 @@
 //
 //	server gserver <service> [--config-dir configs]
 //	server migrate <service> up|down [--steps N]
+//	server healthcheck <service> [--path /readyz]
 //
 // One image, one build; the deployment chooses the service by argument.
 package main
@@ -21,14 +22,20 @@ import (
 	"github.com/spf13/cobra"
 )
 
-func main() {
-	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
-	defer stop()
+// version is set at build time: -ldflags "-X main.version=..."
+var version = "dev"
 
-	if err := newRootCmd().ExecuteContext(ctx); err != nil {
+func main() {
+	if err := run(); err != nil {
 		fmt.Fprintln(os.Stderr, "error:", err)
 		os.Exit(1)
 	}
+}
+
+func run() error {
+	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
+	defer stop()
+	return newRootCmd().ExecuteContext(ctx)
 }
 
 func newRootCmd() *cobra.Command {
@@ -36,6 +43,7 @@ func newRootCmd() *cobra.Command {
 
 	root := &cobra.Command{
 		Use:           "server",
+		Version:       version,
 		Short:         "Runs any service of this repository",
 		SilenceUsage:  true,
 		SilenceErrors: true,
@@ -54,6 +62,7 @@ func newRootCmd() *cobra.Command {
 			},
 		},
 		newMigrateCmd(&configDir),
+		newHealthcheckCmd(&configDir),
 	)
 	return root
 }

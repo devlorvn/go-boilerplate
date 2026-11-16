@@ -51,38 +51,44 @@ func run[T configs.Provider](ctx context.Context, name, configDir string, s Serv
 
 	g, gctx := errgroup.WithContext(ctx)
 	var stops []stopper
+	probe := healthcheck.NewProbe(rsc.healthChecks)
+	var drains []func() // mark the service not ready (grpc health, /readyz)
 
 	// Listeners are opened synchronously so "port already in use" fails the
 	// start instead of surfacing later from a goroutine.
 	if gs, ok := any(s).(GRPCServicer[T]); ok {
-		stop, err := startGRPC(g, c, common, gs, rsc)
+		stop, drain, err := startGRPC(ctx, g, c, common, gs, rsc)
 		if err != nil {
 			return err
 		}
 		stops = append(stops, stop)
+		drains = append(drains, drain)
 	}
 
 	if hs, ok := any(s).(HTTPServicer[T]); ok {
-		stop, err := startHTTP(g, common, func(r *gin.Engine) { hs.RegisterHTTP(c, r) }, log)
+		stop, err := startHTTP(ctx, g, common, func(r *gin.Engine) { hs.RegisterHTTP(c, r) }, log)
 		if err != nil {
 			return err
 		}
 		stops = append(stops, stop)
 	}
 
+	// The monitor server stops last so probes keep answering while draining.
+	var stopMonitor stopper = func(context.Context) {}
 	if common.MetricsPort != 0 {
-		stop, err := startMonitor(g, common.MetricsPort, rsc, log)
+		stop, err := startMonitor(ctx, g, common.MetricsPort, probe, log)
 		if err != nil {
 			return err
 		}
-		stops = append(stops, stop)
+		stopMonitor = stop
 	}
+	drains = append(drains, probe.SetDraining)
 
 	if bs, ok := any(s).(BackgroundServicer[T]); ok {
 		g.Go(func() error {
 			err := bs.RunBackground(gctx, c, rsc)
 			if gctx.Err() != nil {
-				return nil // normal shutdown
+				return nil //nolint:nilerr // workers return ctx errors on normal shutdown
 			}
 			if err == nil {
 				err = errors.New("background worker exited unexpectedly")
@@ -97,7 +103,12 @@ func run[T configs.Provider](ctx context.Context, name, configDir string, s Serv
 	}
 	g.Go(func() error {
 		<-gctx.Done()
-		log.Info("shutting down", zap.Duration("timeout", timeout))
+		log.Info("shutting down", zap.Duration("drain_delay", common.DrainDelay), zap.Duration("timeout", timeout))
+		for _, drain := range drains {
+			drain()
+		}
+		time.Sleep(common.DrainDelay)
+
 		sctx, cancel := context.WithTimeout(context.Background(), timeout)
 		defer cancel()
 		for i := len(stops) - 1; i >= 0; i-- {
@@ -106,6 +117,7 @@ func run[T configs.Provider](ctx context.Context, name, configDir string, s Serv
 		if sd, ok := any(s).(Shutdowner); ok {
 			sd.Shutdown(sctx)
 		}
+		stopMonitor(sctx)
 		return nil
 	})
 
@@ -120,21 +132,22 @@ func run[T configs.Provider](ctx context.Context, name, configDir string, s Serv
 	return nil
 }
 
-func listen(kind string, port int) (net.Listener, error) {
+func listen(ctx context.Context, kind string, port int) (net.Listener, error) {
 	if port == 0 {
 		return nil, fmt.Errorf("%s port is not configured", kind)
 	}
-	lis, err := net.Listen("tcp", fmt.Sprintf(":%d", port))
+	var lc net.ListenConfig
+	lis, err := lc.Listen(ctx, "tcp", fmt.Sprintf(":%d", port))
 	if err != nil {
 		return nil, fmt.Errorf("%s listen: %w", kind, err)
 	}
 	return lis, nil
 }
 
-func startGRPC[T configs.Provider](g *errgroup.Group, c T, common configs.Common, gs GRPCServicer[T], rsc *Resources) (stopper, error) {
-	lis, err := listen("grpc", common.GRPCPort)
+func startGRPC[T configs.Provider](ctx context.Context, g *errgroup.Group, c T, common configs.Common, gs GRPCServicer[T], rsc *Resources) (stopper, func(), error) {
+	lis, err := listen(ctx, "grpc", common.GRPCPort)
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 	log := rsc.Logger()
 
@@ -159,8 +172,7 @@ func startGRPC[T configs.Provider](g *errgroup.Group, c T, common configs.Common
 		return nil
 	})
 
-	return func(ctx context.Context) {
-		hs.Shutdown() // report NOT_SERVING so load balancers drain first
+	stop := func(ctx context.Context) {
 		done := make(chan struct{})
 		go func() { srv.GracefulStop(); close(done) }()
 		select {
@@ -169,11 +181,13 @@ func startGRPC[T configs.Provider](g *errgroup.Group, c T, common configs.Common
 			log.Warn("grpc graceful stop timed out, forcing")
 			srv.Stop()
 		}
-	}, nil
+	}
+	// NOT_SERVING tells gRPC-aware load balancers to drain this instance.
+	return stop, hs.Shutdown, nil
 }
 
-func startHTTP(g *errgroup.Group, common configs.Common, register func(*gin.Engine), log *zap.Logger) (stopper, error) {
-	lis, err := listen("http", common.HTTPPort)
+func startHTTP(ctx context.Context, g *errgroup.Group, common configs.Common, register func(*gin.Engine), log *zap.Logger) (stopper, error) {
+	lis, err := listen(ctx, "http", common.HTTPPort)
 	if err != nil {
 		return nil, err
 	}
@@ -187,13 +201,14 @@ func startHTTP(g *errgroup.Group, common configs.Common, register func(*gin.Engi
 	return serveHTTP(g, "http", lis, r, log), nil
 }
 
-func startMonitor(g *errgroup.Group, port int, rsc *Resources, log *zap.Logger) (stopper, error) {
-	lis, err := listen("metrics", port)
+func startMonitor(ctx context.Context, g *errgroup.Group, port int, probe *healthcheck.Probe, log *zap.Logger) (stopper, error) {
+	lis, err := listen(ctx, "metrics", port)
 	if err != nil {
 		return nil, err
 	}
 	mux := http.NewServeMux()
-	mux.HandleFunc("/healthz", healthcheck.Handler(rsc.healthChecks))
+	mux.HandleFunc("/livez", probe.Live)
+	mux.HandleFunc("/readyz", probe.Ready)
 	mux.Handle("/metrics", metrics.Handler())
 	return serveHTTP(g, "metrics", lis, mux, log), nil
 }

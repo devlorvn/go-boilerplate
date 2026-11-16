@@ -1,22 +1,39 @@
+# Infrastructure only (default):     docker compose up -d
+# Infrastructure + every service:    JWT_SECRET=$(openssl rand -hex 32) docker compose --profile app up -d --build
+
+x-app: &app
+  image: go-boilerplate:local
+  build: .
+  restart: unless-stopped
+  profiles: [app]
+  environment: &app-env
+    COMMON_ENV: local
+    POSTGRES_HOST: postgres
+    POSTGRES_PORT: "5432"
+    POSTGRES_PASSWORD: ${DB_PASSWORD:-postgres}
+    REDIS_HOST: redis
+    KAFKA_BROKERS: kafka:29092
+    JWT_SECRET: ${JWT_SECRET:-}   # required by auth and file; they refuse to start without it
+
 services:
   postgres:
     image: postgres:16-alpine
     container_name: go_boilerplate_postgres
     restart: always
     environment:
-      POSTGRES_USER: ${DB_USER:-postgres}
+      POSTGRES_USER: postgres
       POSTGRES_PASSWORD: ${DB_PASSWORD:-postgres}
-      POSTGRES_DB: ${DB_DB_NAME:-auth_db}
+      POSTGRES_DB: auth_db
     ports:
       - "${DB_PORT:-5432}:5432"
     volumes:
       - postgres_data:/var/lib/postgresql/data
       - ./scripts/init-db.sql:/docker-entrypoint-initdb.d/init-db.sql:ro
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U ${DB_USER:-postgres} -d ${DB_DB_NAME:-auth_db}"]
+      test: ["CMD-SHELL", "pg_isready -U postgres -d auth_db"]
       interval: 5s
       timeout: 5s
-      retries: 5
+      retries: 10
 
   redis:
     image: redis:7-alpine
@@ -30,7 +47,7 @@ services:
       test: ["CMD", "redis-cli", "ping"]
       interval: 5s
       timeout: 5s
-      retries: 5
+      retries: 10
 
   kafka:
     image: confluentinc/cp-kafka:7.6.0
@@ -56,7 +73,89 @@ services:
     volumes:
       - kafka_data:/var/lib/kafka/data
 
+  # S3-compatible storage (SeaweedFS, Apache-2.0). Anonymous access, any keys work.
+  s3:
+    image: chrislusf/seaweedfs:3.97
+    container_name: go_boilerplate_s3
+    restart: always
+    command: server -s3 -dir=/data -master.volumeSizeLimitMB=64
+    ports:
+      - "${S3_PORT:-8333}:8333"
+    volumes:
+      - s3_data:/data
+
+  s3-init:
+    image: chrislusf/seaweedfs:3.97
+    depends_on: [s3]
+    restart: on-failure
+    entrypoint: ["/bin/sh", "-c"]
+    command:
+      - |
+        until echo "s3.bucket.create -name ${S3_BUCKET:-my-app-bucket}" | weed shell -master=s3:9333 2>&1 | grep -Eq "created bucket|already exists"; do
+          sleep 2
+        done
+
+  migrate-auth:
+    <<: *app
+    restart: on-failure
+    command: [migrate, auth, up]
+    depends_on:
+      postgres: { condition: service_healthy }
+
+  migrate-file:
+    <<: *app
+    restart: on-failure
+    command: [migrate, file, up]
+    depends_on:
+      postgres: { condition: service_healthy }
+
+  auth:
+    <<: *app
+    command: [gserver, auth]
+    ports: ["50051:50051"]
+    depends_on:
+      migrate-auth: { condition: service_completed_successfully }
+      redis: { condition: service_healthy }
+    healthcheck: &probe
+      test: ["CMD", "/app/server", "healthcheck", "auth", "--path", "/readyz"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  file:
+    <<: *app
+    command: [gserver, file]
+    ports: ["50052:50052"]
+    environment:
+      <<: *app-env
+      STORAGE_ENDPOINT: http://s3:8333
+      STORAGE_ACCESS_KEY_ID: local
+      STORAGE_SECRET_ACCESS_KEY: local
+    depends_on:
+      migrate-file: { condition: service_completed_successfully }
+      s3-init: { condition: service_completed_successfully }
+    healthcheck:
+      <<: *probe
+      test: ["CMD", "/app/server", "healthcheck", "file", "--path", "/readyz"]
+
+  gateway:
+    <<: *app
+    command: [gserver, gateway]
+    ports: ["8000:8000"]
+    environment:
+      <<: *app-env
+      UPSTREAMS_AUTH_ADDR: auth:50051
+      UPSTREAMS_FILE_ADDR: file:50052
+    depends_on:
+      auth: { condition: service_healthy }
+      file: { condition: service_healthy }
+      redis: { condition: service_healthy }
+    healthcheck:
+      <<: *probe
+      test: ["CMD", "/app/server", "healthcheck", "gateway", "--path", "/readyz"]
+
 volumes:
   postgres_data:
   redis_data:
   kafka_data:
+  s3_data:

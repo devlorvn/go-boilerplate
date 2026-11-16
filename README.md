@@ -9,7 +9,7 @@ client ───────────────► gateway ─────�
                          limit, CORS)  └──────────► file :50052 ──► Postgres (file_db), S3
 ```
 
-| Service | Vai trò | Port | Metrics/health |
+| Service | Vai trò | Port | Monitor (`/livez`, `/readyz`, `/metrics`) |
 |---|---|---|---|
 | `auth` | Đăng ký, đăng nhập, JWT (HS256), refresh token xoay vòng, profile | gRPC 50051 | :2112 |
 | `file` | Upload/download qua S3, presigned URL, worker dọn file PENDING | gRPC 50052 | :2113 |
@@ -19,11 +19,20 @@ client ───────────────► gateway ─────�
 
 Yêu cầu: Go 1.26+, Docker, `openssl`.
 
+**Cách 1: chạy service bằng `go run`** (hạ tầng trong Docker):
+
 ```bash
-make dev-up        # Postgres, Redis, Kafka qua docker compose
+make dev-up        # Postgres, Redis, Kafka, S3 (SeaweedFS) qua docker compose
 make secrets       # tạo configs/secrets/{auth,file}.yaml với JWT secret ngẫu nhiên
 make migrate-up    # chạy migration cho auth và file
 make run-all       # chạy auth, file, rồi gateway
+```
+
+**Cách 2: toàn bộ trong Docker** (giống môi trường deploy):
+
+```bash
+make up-app        # build image, migrate, chạy auth, file, gateway; chờ tới khi healthy
+make down-app
 ```
 
 Thử nhanh:
@@ -34,7 +43,7 @@ TOKEN=$(curl -s localhost:8000/api/v1/auth/login -d '{"email":"alice@example.com
 curl -s localhost:8000/api/v1/auth/me -H "Authorization: Bearer $TOKEN"
 ```
 
-Service `file` cần S3. Chạy local thì trỏ `storage.endpoint` tới MinIO hoặc LocalStack (xem [Cấu hình](#cấu-hình)).
+S3 local là SeaweedFS ở `localhost:8333`, bucket `my-app-bucket` được tạo sẵn bởi service `s3-init`. Ở cách 2, presigned URL trỏ tới `http://s3:8333` (tên host trong mạng Docker); muốn gọi từ máy thật thì đổi host thành `localhost:8333`.
 
 ## Binary và lệnh
 
@@ -44,6 +53,8 @@ Mọi service nằm trong một binary `cmd/server` (cobra):
 go run ./cmd/server gserver auth|file|gateway [--config-dir configs]
 go run ./cmd/server migrate auth|file up
 go run ./cmd/server migrate auth|file down --steps 1
+go run ./cmd/server healthcheck auth|file|gateway [--path /readyz]   # exit 0 nếu probe trả 200
+go run ./cmd/server --version
 ```
 
 | Lệnh make | Tác dụng |
@@ -52,10 +63,15 @@ go run ./cmd/server migrate auth|file down --steps 1
 | `make run-all` | Chạy cả ba, Ctrl+C dừng hết |
 | `make migrate-up` | Migrate up cho mọi service có DB |
 | `make migrate-down-<svc> STEPS=N` | Rollback N bước |
-| `make build` | Build static binary ra `bin/server` |
-| `make test` | `go test ./...` |
-| `make gen-proto` | Sinh code từ `proto/` (cần `protoc`, `protoc-gen-go`, `protoc-gen-go-grpc`) |
-| `make dev-up` / `dev-down` | Bật/tắt hạ tầng local |
+| `make build` | Build static binary ra `bin/server` (gắn version từ git) |
+| `make test` / `make cover` | Test với `-race` / kèm coverage |
+| `make lint` / `make fmt` | golangci-lint / format (gofmt + goimports) |
+| `make gen-proto` | `buf generate` → `pkg/genproto` |
+| `make lint-proto` / `make breaking` | `buf lint` / kiểm tra thay đổi proto phá client so với `origin/main` |
+| `make tools` | Cài golangci-lint, buf, protoc-gen-go, protoc-gen-go-grpc đúng version CI dùng |
+| `make docker-build` | Build image |
+| `make up-app` / `down-app` | Toàn bộ stack trong Docker |
+| `make dev-up` / `dev-down` | Chỉ hạ tầng local |
 
 ## Cấu hình
 
@@ -74,7 +90,8 @@ Khóa đáng chú ý:
 
 | File | Key | Ý nghĩa |
 |---|---|---|
-| `common.yaml` | `common.env` | `local` bật gRPC reflection |
+| `common.yaml` | `common.env` | `local` bật gRPC reflection; image mặc định là `prod` |
+| `common.yaml` | `common.drain_delay` | Thời gian `/readyz` báo DRAINING trước khi tắt server (xem [Health check](#health-check-và-graceful-shutdown)) |
 | `auth.yaml` | `tokens.access_ttl`, `tokens.refresh_ttl` | Thời hạn access/refresh token |
 | `file.yaml` | `storage.*` | Bucket, region, endpoint (để trống = S3 thật) |
 | `file.yaml` | `cleanup.interval`, `cleanup.pending_timeout` | Chu kỳ worker và thời gian chờ trước khi đánh dấu FAILED |
@@ -130,12 +147,42 @@ Servicer cài các interface tùy chọn và bootstrap tự lo phần còn lại
 
 Luôn có sẵn:
 
-- Monitor server với `/healthz` và `/metrics` (Prometheus).
+- Monitor server với `/livez`, `/readyz` và `/metrics` (Prometheus).
 - gRPC health check.
 - Chuỗi interceptor: recovery → logging → error → interceptor của service.
 - `Resources` khởi tạo lười: `DB()`, `Redis(ctx)`, `Kafka()`.
 
 Listener mở đồng bộ nên cấu hình sai sẽ lỗi ngay lúc khởi động. Khi tắt, health chuyển sang NOT_SERVING trước rồi mới drain.
+
+## Health check và graceful shutdown
+
+| Endpoint | Ý nghĩa | Dùng cho |
+|---|---|---|
+| `/livez` | Luôn 200 khi process còn phục vụ được HTTP. Không kiểm tra dependency | Liveness probe (k8s), container health check (ECS, Docker) |
+| `/readyz` | 200 khi mọi dependency đã mở (Postgres, Redis) đều ping được và service chưa bắt đầu tắt | Readiness probe (k8s), target group health check (ALB) |
+| gRPC `grpc.health.v1.Health` | `SERVING` / `NOT_SERVING` | Load balancer hiểu gRPC |
+
+Tách hai probe để DB chập chờn chỉ làm instance bị rút khỏi load balancer, không làm orchestrator restart hàng loạt.
+
+Khi nhận SIGTERM:
+
+1. `/readyz` trả 503 `DRAINING`, gRPC health chuyển `NOT_SERVING`.
+2. Chờ `common.drain_delay` để load balancer kịp rút instance (đặt khoảng 10s khi đứng sau ALB, 0 ở local).
+3. Dừng gRPC/HTTP server một cách graceful trong `common.shutdown_timeout`.
+4. Gọi `Shutdown` của servicer, cuối cùng mới tắt monitor server.
+
+Image distroless không có `curl`, nên health check của container chạy chính binary: `/app/server healthcheck <svc>`.
+
+## Docker
+
+`Dockerfile` multi-stage: build bằng `golang:1.26.4-alpine`, chạy trên `distroless/static:nonroot` (khoảng 66 MB, không shell, user 65532). Một image cho mọi service, chọn bằng tham số:
+
+```bash
+docker run IMAGE gserver auth
+docker run IMAGE migrate auth up
+```
+
+Image chứa `configs/*.yaml` và `migrations/`, **không** chứa `configs/secrets/`. Secret và địa chỉ hạ tầng truyền qua env var, ví dụ `JWT_SECRET`, `POSTGRES_HOST`, `POSTGRES_PASSWORD`, `REDIS_HOST`, `KAFKA_BROKERS`.
 
 ## Phân quyền
 
@@ -184,19 +231,32 @@ Chi tiết lỗi nội bộ chỉ ghi vào log server. Body lỗi luôn có dạ
 
 ## Thêm một service mới
 
-1. Viết `proto/<name>/v1/<name>.proto`, chạy `make gen-proto`.
+1. Viết `proto/<name>/v1/<name>.proto`, chạy `make lint-proto gen-proto`.
 2. Tạo `internal/<name>/` theo layout ở trên: `domain`, `application` (ports, commands, queries), `infrastructure`, `transport/grpc` kèm `Policy`.
 3. Tạo `configs/<name>.yaml` và (nếu cần DB) `migrations/<name>/`, thêm tên vào `DB_SERVICES` trong `Makefile`.
 4. Tạo `cmd/server/<name>/server.go` gọi `bootstrap.Register`, rồi blank-import nó trong `cmd/server/main.go`.
+5. Thêm service vào `docker-compose.yml` (profile `app`) nếu muốn chạy cùng stack.
 
-## Test
+## Test và chất lượng code
 
 ```bash
-make test
-go test -race ./...
+make tools         # một lần
+make test lint lint-proto
 ```
 
-Use case được test bằng fake trong `application/apptest`, không cần Docker.
+- Use case được test bằng fake viết tay trong `application/apptest`, không cần Docker. Không dùng mockery: fake in-memory kiểm tra được hành vi (ví dụ refresh token chỉ dùng một lần) thay vì chỉ kiểm tra lời gọi, và không phải sinh lại khi interface đổi.
+- `.golangci.yml` bật thêm gosec, errorlint, noctx, nilerr, gocritic, revive... và goimports với nhóm import `go-boilerplate`.
+
+## CI
+
+`.github/workflows/ci.yml` chạy trên mỗi push vào `main` và mỗi pull request:
+
+| Job | Kiểm tra |
+|---|---|
+| `lint` | golangci-lint |
+| `test` | `go mod tidy -diff`, `go test -race` với coverage |
+| `proto` | `buf lint`, `buf breaking` so với nhánh đích (chỉ PR), code trong `pkg/genproto` khớp với `buf generate` |
+| `docker` | Build image (không push), cache qua GitHub Actions |
 
 ## Hạn chế đã biết
 

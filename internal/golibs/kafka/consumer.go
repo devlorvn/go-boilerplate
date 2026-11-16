@@ -2,14 +2,11 @@ package kafka
 
 import (
 	"context"
+
 	"go-boilerplate/internal/golibs/retry"
 
 	"go.uber.org/zap"
 )
-
-type consumer interface {
-	readAndHandle(ctx context.Context, handler MsgHandler) error
-}
 
 type strictConsumer struct {
 	reader Reader

@@ -2,6 +2,7 @@ package retry
 
 import (
 	"crypto/rand"
+	"errors"
 	"math/big"
 	"time"
 )
@@ -17,7 +18,8 @@ func NewStop(err error) Stop {
 func Retry[T any](attempts int, sleep time.Duration, f func() (T, error)) (T, error) {
 	data, err := f()
 	if err != nil {
-		if s, ok := err.(Stop); ok {
+		var s Stop
+		if errors.As(err, &s) {
 			return zero[T](), s.error
 		}
 

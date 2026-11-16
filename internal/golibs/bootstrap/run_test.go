@@ -89,8 +89,8 @@ func TestRun_StartsAllServersAndStopsGracefully(t *testing.T) {
 	if resp := waitHTTP(t, fmt.Sprintf("http://127.0.0.1:%d/ping", httpPort)); resp.StatusCode != http.StatusOK {
 		t.Fatalf("http /ping = %d", resp.StatusCode)
 	}
-	if resp := waitHTTP(t, fmt.Sprintf("http://127.0.0.1:%d/healthz", metricsPort)); resp.StatusCode != http.StatusOK {
-		t.Fatalf("/healthz = %d", resp.StatusCode)
+	if resp := waitHTTP(t, fmt.Sprintf("http://127.0.0.1:%d/readyz", metricsPort)); resp.StatusCode != http.StatusOK {
+		t.Fatalf("/readyz = %d", resp.StatusCode)
 	}
 
 	conn, err := grpc.NewClient(fmt.Sprintf("127.0.0.1:%d", grpcPort), grpc.WithTransportCredentials(insecure.NewCredentials()))

@@ -1,0 +1,13 @@
+# buf: proto lint, breaking-change detection and code generation.
+#   make gen-proto     generate pkg/genproto
+#   make lint-proto    buf lint
+#   make breaking      compare with origin/main
+version: v2
+modules:
+  - path: proto
+lint:
+  use:
+    - STANDARD
+breaking:
+  use:
+    - FILE

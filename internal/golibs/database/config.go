@@ -44,11 +44,11 @@ func NewGORM(cfg DBConfig, isDebug bool) (*gorm.DB, error) {
 	})
 
 	if err != nil {
-		return nil, fmt.Errorf("failed to connect database: %v", err)
+		return nil, fmt.Errorf("failed to connect database: %w", err)
 	}
 	sqlDB, err := db.DB()
 	if err != nil {
-		return nil, fmt.Errorf("failed to get sql db: %v", err)
+		return nil, fmt.Errorf("failed to get sql db: %w", err)
 	}
 	sqlDB.SetMaxIdleConns(cfg.MaxIdleConns)
 	sqlDB.SetMaxOpenConns(cfg.MaxOpenConns)

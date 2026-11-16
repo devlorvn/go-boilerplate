@@ -114,8 +114,10 @@ func (rt *Router) me(c *gin.Context) {
 }
 
 func (rt *Router) listFiles(c *gin.Context) {
-	limit, _ := strconv.Atoi(c.DefaultQuery("limit", "20"))
-	offset, _ := strconv.Atoi(c.DefaultQuery("offset", "0"))
+	// Bad input parses as 0 and out-of-range input saturates at int32 bounds;
+	// the file service applies its own defaults and caps.
+	limit, _ := strconv.ParseInt(c.DefaultQuery("limit", "20"), 10, 32)
+	offset, _ := strconv.ParseInt(c.DefaultQuery("offset", "0"), 10, 32)
 	resp, err := rt.Files.GetAllFiles(downstream(c), &filev1.GetAllFilesRequest{
 		Limit: int32(limit), Offset: int32(offset), Status: c.Query("status"),
 	})
