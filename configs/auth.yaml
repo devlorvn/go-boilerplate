@@ -1,0 +1,6 @@
+common:
+  grpc_port: 50051
+  metrics_port: 2112
+
+postgres:
+  db_name: auth_db

@@ -1,0 +1,31 @@
+# Shared by every service. Layer order (later wins):
+#   common.yaml -> <service>.yaml -> secrets/<service>.yaml (gitignored) -> env vars
+# Env var name = key path upper-cased with "." -> "_", e.g. POSTGRES_PASSWORD, JWT_SECRET.
+# Secrets stay empty here; they come from secrets/*.yaml locally and env vars in the cloud.
+common:
+  env: local          # local | dev | staging | prod
+  log_level: debug
+  shutdown_timeout: 10s
+
+postgres:
+  host: localhost
+  port: "5432"
+  user: postgres
+  password: ""        # secret
+  ssl_mode: disable
+  max_open_conns: 20
+  max_idle_conns: 5
+  max_lifetime: 1h
+
+redis:
+  host: localhost
+  port: "6379"
+  password: ""        # secret
+  db: 0
+
+kafka:
+  brokers: [localhost:9092]   # KAFKA_BROKERS="" disables kafka
+  group_id: go-boilerplate
+
+jwt:
+  secret: ""          # secret, must be identical for auth and file

@@ -8,7 +8,6 @@ import (
 	"time"
 
 	"go-boilerplate/internal/gateway/app/middleware"
-	"go-boilerplate/internal/golibs/configs"
 	"go-boilerplate/internal/golibs/redis"
 	filev1 "go-boilerplate/pkg/genproto/file/v1"
 	userv1 "go-boilerplate/pkg/genproto/user/v1"
@@ -18,33 +17,38 @@ import (
 	"google.golang.org/grpc/metadata"
 )
 
+type RateLimit struct {
+	Requests int           `mapstructure:"requests"`
+	Window   time.Duration `mapstructure:"window"`
+}
+
 type GatewayApp struct {
-	Config     *configs.Config
 	Logger     *zap.Logger
 	Redis      *redis.RedisClient
 	UserClient userv1.UserServiceClient
 	FileClient filev1.FileServiceClient
+	RateLimit  RateLimit
 }
 
 func NewGatewayApp(
-	cfg *configs.Config,
 	log *zap.Logger,
 	rClient *redis.RedisClient,
 	userClient userv1.UserServiceClient,
 	fileClient filev1.FileServiceClient,
+	rateLimit RateLimit,
 ) *GatewayApp {
 	return &GatewayApp{
-		Config:     cfg,
 		Logger:     log,
 		Redis:      rClient,
 		UserClient: userClient,
 		FileClient: fileClient,
+		RateLimit:  rateLimit,
 	}
 }
 
 func (a *GatewayApp) RegisterHTTP(router *gin.Engine) {
 	router.Use(middleware.CORS())
-	router.Use(middleware.RateLimit(a.Redis, 100, time.Minute))
+	router.Use(middleware.RateLimit(a.Redis, a.RateLimit.Requests, a.RateLimit.Window))
 
 	registerRoutes := func(rg *gin.RouterGroup) {
 		auth := rg.Group("/auth")

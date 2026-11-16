@@ -1,0 +1,11 @@
+common:
+  http_port: 8000
+  metrics_port: 2114
+
+upstreams:
+  auth_addr: localhost:50051
+  file_addr: localhost:50052
+
+rate_limit:
+  requests: 100
+  window: 1m

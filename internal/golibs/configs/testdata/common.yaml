@@ -1,0 +1,16 @@
+common:
+  env: local
+  log_level: debug
+  shutdown_timeout: 5s
+postgres:
+  host: localhost
+  port: "5432"
+  user: postgres
+  password: ""
+redis:
+  host: localhost
+  port: "6379"
+kafka:
+  brokers: [localhost:9092]
+jwt:
+  secret: ""

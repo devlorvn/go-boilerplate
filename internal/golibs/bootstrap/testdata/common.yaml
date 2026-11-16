@@ -1,0 +1,4 @@
+common:
+  env: test
+  log_level: error
+  shutdown_timeout: 2s

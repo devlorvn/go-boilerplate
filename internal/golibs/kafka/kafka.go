@@ -10,8 +10,8 @@ import (
 )
 
 type KafkaConfig struct {
-	Brokers []string `mapstructure:"BROKERS"`
-	GroupID string   `mapstructure:"GROUP_ID"`
+	Brokers []string `mapstructure:"brokers"`
+	GroupID string   `mapstructure:"group_id"`
 }
 
 type MsgHandler func(ctx context.Context, data []byte) (shouldRetry bool, err error)

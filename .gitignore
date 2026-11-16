@@ -39,5 +39,6 @@ coverage.html
 
 # AI 
 docs/superpowers/
-# Per-service env templates are committed
-!.env.*.example
+# Local secrets (template: configs/secrets/example.yaml)
+configs/secrets/*
+!configs/secrets/example.yaml

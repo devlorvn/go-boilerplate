@@ -9,10 +9,10 @@ import (
 )
 
 type RedisConfig struct {
-	Host     string `mapstructure:"HOST"`
-	Port     string `mapstructure:"PORT"`
-	Password string `mapstructure:"PASSWORD"`
-	DB       int    `mapstructure:"DB"`
+	Host     string `mapstructure:"host"`
+	Port     string `mapstructure:"port"`
+	Password string `mapstructure:"password"`
+	DB       int    `mapstructure:"db"`
 }
 
 func (r RedisConfig) Addr() string {
