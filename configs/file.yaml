@@ -14,3 +14,4 @@ storage:
 
 cleanup:
   interval: 30m
+  pending_timeout: 24h

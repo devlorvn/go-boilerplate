@@ -1,16 +1,24 @@
+// Package domain is the auth service's core model: entities, invariants and
+// errors. It depends on nothing but the standard library and errorx.
 package domain
 
 import (
-	"context"
-	"errors"
+	"net/mail"
+	"strings"
 	"time"
+
+	"go-boilerplate/internal/golibs/authz"
+	"go-boilerplate/internal/golibs/errorx"
 )
 
+const MinPasswordLength = 8
+
 var (
-	ErrUserNotFound       = errors.New("user not found")
-	ErrEmailAlreadyExists = errors.New("email already exists")
-	ErrInvalidCredentials = errors.New("invalid email or password")
-	ErrInvalidToken       = errors.New("invalid or expired token")
+	ErrUserNotFound       = errorx.New(errorx.NotFound, "user not found")
+	ErrEmailAlreadyExists = errorx.New(errorx.AlreadyExists, "email already exists")
+	ErrInvalidCredentials = errorx.New(errorx.Unauthenticated, "invalid email or password")
+	ErrInvalidToken       = errorx.New(errorx.Unauthenticated, "invalid or expired token")
+	ErrForbidden          = errorx.New(errorx.PermissionDenied, "not allowed to access this user")
 )
 
 type User struct {
@@ -23,24 +31,41 @@ type User struct {
 	UpdatedAt    time.Time
 }
 
-type UserRepository interface {
-	Create(ctx context.Context, user *User) error
-	GetByID(ctx context.Context, id string) (*User, error)
-	GetByEmail(ctx context.Context, email string) (*User, error)
+// NormalizeEmail is applied everywhere an email enters the system so lookups
+// and the unique index agree.
+func NormalizeEmail(email string) string {
+	return strings.ToLower(strings.TrimSpace(email))
 }
 
-type TokenRepository interface {
-	StoreRefreshToken(ctx context.Context, userID, refreshToken string, ttl time.Duration) error
-	GetRefreshToken(ctx context.Context, refreshToken string) (string, error)
-	DeleteRefreshToken(ctx context.Context, refreshToken string) error
+// ValidateRegistration checks the raw input of a new account.
+func ValidateRegistration(email, password, name string) error {
+	if _, err := mail.ParseAddress(email); err != nil || !strings.Contains(email, "@") {
+		return errorx.Invalid("invalid email address")
+	}
+	if len(password) < MinPasswordLength {
+		return errorx.Invalid("password must be at least %d characters", MinPasswordLength)
+	}
+	if strings.TrimSpace(name) == "" {
+		return errorx.Invalid("name is required")
+	}
+	return nil
 }
 
-type TokenManager interface {
-	GenerateAccessToken(userID, role string, ttl time.Duration) (string, error)
-	ValidateAccessToken(tokenString string) (userID, role string, err error)
-	GenerateRefreshToken() (string, error)
+// NewUser builds a regular user; the ID is assigned by the repository.
+func NewUser(email, passwordHash, name string, now time.Time) *User {
+	return &User{
+		Email:        NormalizeEmail(email),
+		PasswordHash: passwordHash,
+		Name:         strings.TrimSpace(name),
+		Role:         authz.RoleUser,
+		CreatedAt:    now,
+		UpdatedAt:    now,
+	}
 }
 
-type EventPublisher interface {
-	PublishUserCreated(ctx context.Context, user *User) error
+// CanReadProfile: a user reads their own profile; admins read anyone's.
+// It only needs the target ID, so it is checked before any lookup and a
+// non-admin cannot learn which user IDs exist.
+func CanReadProfile(actor authz.Actor, userID string) bool {
+	return actor.UserID == userID || actor.IsAdmin()
 }

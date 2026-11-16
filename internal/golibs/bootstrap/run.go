@@ -141,6 +141,7 @@ func startGRPC[T configs.Provider](g *errgroup.Group, c T, common configs.Common
 	unary := append([]grpc.UnaryServerInterceptor{
 		interceptors.RecoveryInterceptor(log),
 		interceptors.LoggingInterceptor(log),
+		interceptors.ErrorInterceptor(log),
 	}, gs.UnaryInterceptors(c, rsc)...)
 
 	srv := grpc.NewServer(grpc.ChainUnaryInterceptor(unary...))

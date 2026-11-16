@@ -25,7 +25,7 @@ func RecoveryInterceptor(logger *zap.Logger) grpc.UnaryServerInterceptor {
 					zap.Any("panic", r),
 					zap.String("stacktrace", stack),
 				)
-				err = status.Errorf(codes.Internal, "internal server error: %v", r)
+				err = status.Error(codes.Internal, "internal error")
 			}
 		}()
 

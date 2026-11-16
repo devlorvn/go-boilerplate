@@ -21,7 +21,8 @@ type Servicer[T configs.Provider] interface {
 
 type GRPCServicer[T configs.Provider] interface {
 	RegisterGRPC(c T, s *grpc.Server)
-	// UnaryInterceptors are chained after the default recovery + logging.
+	// UnaryInterceptors are chained after the defaults: recovery, logging,
+	// error mapping (handlers may return errorx/domain errors directly).
 	UnaryInterceptors(c T, rsc *Resources) []grpc.UnaryServerInterceptor
 }
 

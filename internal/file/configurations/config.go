@@ -22,5 +22,6 @@ type Storage struct {
 }
 
 type Cleanup struct {
-	Interval time.Duration `mapstructure:"interval"`
+	Interval       time.Duration `mapstructure:"interval"`        // how often the worker runs
+	PendingTimeout time.Duration `mapstructure:"pending_timeout"` // PENDING uploads older than this expire
 }

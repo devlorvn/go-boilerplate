@@ -4,3 +4,7 @@ common:
 
 postgres:
   db_name: auth_db
+
+tokens:
+  access_ttl: 15m
+  refresh_ttl: 168h   # 7 days

@@ -1,15 +1,15 @@
 package configurations
 
 import (
-	"go-boilerplate/internal/gateway/app"
+	gwhttp "go-boilerplate/internal/gateway/transport/http"
 	"go-boilerplate/internal/golibs/configs"
 )
 
 // Config of the gateway: configs/common.yaml + configs/gateway.yaml.
 type Config struct {
 	configs.Base `mapstructure:",squash"`
-	Upstreams    Upstreams     `mapstructure:"upstreams"`
-	RateLimit    app.RateLimit `mapstructure:"rate_limit"`
+	Upstreams    Upstreams        `mapstructure:"upstreams"`
+	RateLimit    gwhttp.RateLimit `mapstructure:"rate_limit"`
 }
 
 type Upstreams struct {

@@ -6,8 +6,8 @@ import (
 	"errors"
 	"fmt"
 
-	"go-boilerplate/internal/gateway/app"
 	"go-boilerplate/internal/gateway/configurations"
+	gwhttp "go-boilerplate/internal/gateway/transport/http"
 	"go-boilerplate/internal/golibs/bootstrap"
 	filev1 "go-boilerplate/pkg/genproto/file/v1"
 	userv1 "go-boilerplate/pkg/genproto/user/v1"
@@ -22,8 +22,8 @@ func init() {
 }
 
 type server struct {
-	app   *app.GatewayApp
-	conns []*grpc.ClientConn
+	router *gwhttp.Router
+	conns  []*grpc.ClientConn
 }
 
 func (s *server) InitDependencies(ctx context.Context, c configurations.Config, rsc *bootstrap.Resources) error {
@@ -44,11 +44,12 @@ func (s *server) InitDependencies(ctx context.Context, c configurations.Config, 
 		return err
 	}
 
-	s.app = app.NewGatewayApp(rsc.Logger(), rdb,
-		userv1.NewUserServiceClient(authConn),
-		filev1.NewFileServiceClient(fileConn),
-		c.RateLimit,
-	)
+	s.router = &gwhttp.Router{
+		Users:     userv1.NewUserServiceClient(authConn),
+		Files:     filev1.NewFileServiceClient(fileConn),
+		Redis:     rdb,
+		RateLimit: c.RateLimit,
+	}
 	return nil
 }
 
@@ -63,7 +64,7 @@ func (s *server) dial(addr string) (*grpc.ClientConn, error) {
 }
 
 func (s *server) RegisterHTTP(_ configurations.Config, r *gin.Engine) {
-	s.app.RegisterHTTP(r)
+	s.router.Register(r)
 }
 
 func (s *server) Shutdown(context.Context) {

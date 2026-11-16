@@ -5,6 +5,7 @@ import (
 	"testing"
 	"time"
 
+	"go-boilerplate/internal/golibs/authz"
 	"go-boilerplate/internal/golibs/jwtutil"
 
 	"google.golang.org/grpc"
@@ -15,16 +16,22 @@ import (
 
 func TestAuthInterceptor(t *testing.T) {
 	v, _ := jwtutil.NewHS256("secret")
-	good, _ := v.Sign("u1", "user", time.Minute)
-	icpt := AuthInterceptor(v, "/svc/Public")
+	userTok, _ := v.Sign("u1", authz.RoleUser, time.Minute)
+	adminTok, _ := v.Sign("a1", authz.RoleAdmin, time.Minute)
 
-	var gotUser string
+	icpt := AuthInterceptor(v, authz.Policy{
+		"/svc/Public":  authz.Public,
+		"/svc/Private": authz.Authenticated,
+		"/svc/Admin":   authz.Roles(authz.RoleAdmin),
+	})
+
+	var got authz.Actor
 	handler := func(ctx context.Context, _ interface{}) (interface{}, error) {
-		gotUser, _ = UserIDFromContext(ctx)
+		got, _ = ActorFromContext(ctx)
 		return "ok", nil
 	}
-	withAuth := func(h string) context.Context {
-		return metadata.NewIncomingContext(context.Background(), metadata.Pairs("authorization", h))
+	bearer := func(tok string) context.Context {
+		return metadata.NewIncomingContext(context.Background(), metadata.Pairs("authorization", "Bearer "+tok))
 	}
 
 	cases := []struct {
@@ -34,22 +41,25 @@ func TestAuthInterceptor(t *testing.T) {
 		wantCode codes.Code
 		wantUser string
 	}{
-		{"valid token", withAuth("Bearer " + good), "/svc/Private", codes.OK, "u1"},
+		{"valid token", bearer(userTok), "/svc/Private", codes.OK, "u1"},
 		{"no metadata", context.Background(), "/svc/Private", codes.Unauthenticated, ""},
-		{"bad scheme", withAuth("Basic " + good), "/svc/Private", codes.Unauthenticated, ""},
-		{"bad token", withAuth("Bearer nope"), "/svc/Private", codes.Unauthenticated, ""},
+		{"bad scheme", metadata.NewIncomingContext(context.Background(), metadata.Pairs("authorization", "Basic "+userTok)), "/svc/Private", codes.Unauthenticated, ""},
+		{"bad token", bearer("nope"), "/svc/Private", codes.Unauthenticated, ""},
 		{"public method", context.Background(), "/svc/Public", codes.OK, ""},
 		{"health check", context.Background(), "/grpc.health.v1.Health/Check", codes.OK, ""},
+		{"role allowed", bearer(adminTok), "/svc/Admin", codes.OK, "a1"},
+		{"role denied", bearer(userTok), "/svc/Admin", codes.PermissionDenied, ""},
+		{"method without rule is denied", bearer(adminTok), "/svc/Unknown", codes.PermissionDenied, ""},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
-			gotUser = ""
+			got = authz.Actor{}
 			_, err := icpt(tc.ctx, nil, &grpc.UnaryServerInfo{FullMethod: tc.method}, handler)
 			if status.Code(err) != tc.wantCode {
 				t.Fatalf("code = %v, want %v (err=%v)", status.Code(err), tc.wantCode, err)
 			}
-			if gotUser != tc.wantUser {
-				t.Fatalf("user = %q, want %q", gotUser, tc.wantUser)
+			if got.UserID != tc.wantUser {
+				t.Fatalf("user = %q, want %q", got.UserID, tc.wantUser)
 			}
 		})
 	}

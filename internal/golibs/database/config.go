@@ -39,7 +39,8 @@ func NewGORM(cfg DBConfig, isDebug bool) (*gorm.DB, error) {
 		logLevel = logger.Info
 	}
 	db, err := gorm.Open(postgres.Open(cfg.DSN()), &gorm.Config{
-		Logger: logger.Default.LogMode(logLevel),
+		Logger:         logger.Default.LogMode(logLevel),
+		TranslateError: true, // unique violations -> gorm.ErrDuplicatedKey, etc.
 	})
 
 	if err != nil {
